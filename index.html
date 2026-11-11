@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optical Fibre Ray Simulator</title>
+<style>
+:root{--bg:#0a1d2e;--card:#0d2b3c;--bd:#1b4452;--tx:#eef6f9;--mu:#97b3c0;--teal:#14b8a0;--ink:#10283a;--ink2:#5d7482;--line:#d9e1e6;--soft:#f3f7f8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.app{display:grid;grid-template-columns:1fr 400px;min-height:100vh}
+.left{padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.right{background:#fff;color:var(--ink);padding:20px 22px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.chip{padding:7px 12px;border:1px solid;border-radius:8px;font-weight:700}
+.chip.ok{background:#0f3f37;color:#aef0dd;border-color:#1b7a6b}
+.chip.bad{background:#4a1f1d;color:#ffbcae;border-color:#a8453a}
+.live{font-size:11px;font-weight:700;color:var(--teal);text-align:right}
+button{font:inherit;cursor:pointer}
+.btn{background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-weight:600;font-size:13px}
+.btn:hover{background:#eef3f5}
+.btn.on{background:#d9f4ee;border-color:var(--teal)}
+.btn.dark{background:transparent;color:var(--tx);border-color:var(--bd);margin-top:4px}
+.btn.dark:hover{background:#12303f}
+.card{background:var(--card);border:1px solid var(--bd);padding:14px 20px}
+.card h2{margin:0 0 4px;font-size:16px}
+.muted{color:var(--mu);font-size:13px}
+.canvaswrap{border:1px solid var(--bd);background:#08192a;flex:1;min-height:320px;position:relative}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;outline:none}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--bd);border:1px solid var(--bd)}
+.stat{background:var(--card);padding:10px 16px}
+.stat .l{font-size:12px;color:var(--mu)}
+.stat .v{font-size:22px;font-weight:700}
+.stat .s{font-size:11px;color:#6f8d9b}
+h3{font-size:11px;letter-spacing:.08em;color:var(--ink2);margin:0 0 6px}
+.box{background:var(--soft);border:1px solid var(--line);padding:12px;border-radius:6px;margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid2 .wide{grid-column:span 2}
+.param{margin-top:10px}
+.param label{display:flex;justify-content:space-between;font-weight:600;font-size:13px}
+.param label span{font-weight:400;color:var(--ink2)}
+.prow{display:flex;gap:10px;align-items:center}
+input[type=range]{flex:1;accent-color:#12a48c}
+input[type=number]{width:84px;padding:8px;border:1px solid var(--line);border-radius:6px;font:inherit;font-weight:700;color:var(--ink)}
+.primary{width:100%;background:#12a48c;color:#032b25;border-color:#0b7f6b;padding:12px;font-size:15px;margin-top:14px}
+.primary:hover{background:#0f8f7a}
+.note{font-size:12px;color:var(--ink2);margin-top:12px}
+@media(max-width:900px){.app{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+@media print{.right,.top button,.canvaswrap{display:none!important}.app{display:block}}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="left">
+  <div class="top">
+   <div class="chip ok" id="chip">Guided ray</div>
+   <div><div class="live">● LIVE CALCULATION</div><button class="btn dark" id="play">Pause animation</button></div>
+  </div>
+  <div class="card"><h2 id="head"></h2><div class="muted">Drag the light source, or focus the canvas and use ↑ / ↓ (Shift for 1°). Ray playback is illustrative, not a physical speed.</div></div>
+  <div class="canvaswrap"><canvas id="cv" tabindex="0"></canvas></div>
+  <div class="muted">Longitudinal section · 600 µm segment. Axes use different scales; read the calculated angles.</div>
+  <div class="stats">
+   <div class="stat"><div class="l">Numerical aperture</div><div class="v" id="vNA"></div><div class="s">√(n₁² − n₂²)</div></div>
+   <div class="stat"><div class="l">Acceptance half-angle in air</div><div class="v" id="vTmax"></div><div class="s">asin(NA)</div></div>
+   <div class="stat"><div class="l">Angle inside the core</div><div class="v" id="vTc"></div><div class="s">sin θ = n₁ · sin θ′</div></div>
+   <div class="stat"><div class="l">Critical angle at the wall</div><div class="v" id="vCrit"></div><div class="s">asin(n₂ / n₁)</div></div>
+   <div class="stat"><div class="l">Angle of incidence at the wall</div><div class="v" id="vWall"></div><div class="s">90° − angle inside the core</div></div>
+   <div class="stat"><div class="l">Reflections in 600 µm</div><div class="v" id="vRefl"></div><div class="s" id="sRefl"></div></div>
+  </div>
+  <div class="card"><div class="muted" style="font-weight:700;font-size:11px;letter-spacing:.08em">WHAT YOU ARE OBSERVING</div>
+   <div style="font-weight:700;font-size:16px;margin:6px 0" id="obsMain"></div><div class="muted" id="obsDetail"></div></div>
+ </div>
+ <div class="right">
+  <h3>SCENARIOS</h3>
+  <div class="box">
+   <div class="grid2">
+    <button class="btn" data-sc="axial">Axial launch</button>
+    <button class="btn" data-sc="near">Near acceptance</button>
+    <button class="btn wide" data-sc="outside">Outside acceptance</button>
+   </div>
+   <div class="muted" style="color:var(--ink2);margin:10px 0 8px" id="scLabel"></div>
+   <button class="btn" id="q95">↻ Try 95% of acceptance</button>
+  </div>
+  <div id="params"></div>
+  <button class="btn primary" id="pdf">Print / save report (PDF)</button>
+  <div class="grid2" style="margin-top:10px">
+   <button class="btn" id="link">Copy link to this scenario</button>
+   <button class="btn" id="reset">Reset</button>
+  </div>
+  <div class="note" id="note">Illustrative values · not a product specification</div>
+ </div>
+</div>
+
+<script>
+const SEG=600, CR=0.8;
+const DEF={theta:26.3,n1:1.6,n2:1.532,d:60};
+const LIM={theta:[0,60],n1:[1.3,1.7],n2:[1.2,1.69],d:[5,200]};
+const PAR=[["theta","Input angle to the axis","°",0.1,1],["n1","Core refractive index n₁","",0.001,3],["n2","Cladding refractive index n₂","",0.001,3],["d","Core diameter","µm",1,0]];
+const D2R=Math.PI/180, R2D=180/Math.PI;
+const clamp=(v,a,b)=>Math.min(Math.max(v,a),b);
+
+/* ---------- physics ---------- */
+function traceRay(theta,n1,n2,d){
+  const a=d/2,b=a+CR*d,s=Math.sin(theta*D2R)/n1,c=Math.sqrt(1-s*s);
+  let x=0,y=0,dx=c,dy=-s,region="core";
+  const bounds={core:[-a,a],up:[a,b],down:[-b,-a]},index={core:n1,up:n2,down:n2};
+  const nu={core:"up",up:"air",down:"core"},nd={core:"down",down:"air",up:"core"};
+  const segs=[],events=[];let absorbed=null;
+  for(let i=0;i<600;i++){
+    if(Math.abs(dy)<1e-12){segs.push([x,y,SEG,y,region]);break}
+    const [lo,hi]=bounds[region],yt=dy>0?hi:lo,t=(yt-y)/dy,xn=x+dx*t;
+    if(xn>=SEG){segs.push([x,y,SEG,y+dy*(SEG-x)/dx,region]);break}
+    segs.push([x,y,xn,yt,region]);x=xn;y=yt;
+    const nreg=(dy>0?nu:nd)[region];
+    if(nreg==="air"){absorbed=[x,y];events.push([x,y,"absorbed"]);break}
+    const dxt=index[region]*dx/index[nreg];
+    if(Math.abs(dxt)>=1){dy=-dy;events.push([x,y,region==="core"?"tir_core":"tir_clad"])}
+    else{dx=dxt;dy=Math.sign(dy||1)*Math.sqrt(1-dx*dx);events.push([x,y,"refract"]);region=nreg}
+  }
+  return {segs,events,absorbed};
+}
+function analyse(p){
+  const na=Math.sqrt(Math.max(p.n1*p.n1-p.n2*p.n2,0));
+  const tmax=na>=1?90:Math.asin(na)*R2D;
+  const tc=Math.asin(Math.sin(p.theta*D2R)/p.n1)*R2D;
+  const accepted=p.theta<=tmax+1e-9;
+  const tr=traceRay(p.theta,p.n1,p.n2,p.d);
+  const bounces=tr.events.filter(e=>e[2]==="tir_core").length;
+  const period=tc>1e-9?p.d/Math.tan(tc*D2R):null;
+  let clad=null;
+  if(!accepted){clad=Math.acos(Math.min(p.n1*Math.cos(tc*D2R)/p.n2,1))*R2D}
+  return {na,tmax,tc,margin:tmax-p.theta,crit:Math.asin(Math.min(p.n2/p.n1,1))*R2D,wall:90-tc,accepted,bounces,period,clad,...tr};
+}
+function describe(p,r){
+  const f=(v,n)=>v.toFixed(n);
+  if(r.accepted){
+    const acc=r.tmax>=90?"this fibre accepts every angle (NA ≥ 1)":`inside the acceptance half-angle θmax = ${f(r.tmax,2)}°`;
+    const sp=r.period?`, once every ${r.period.toFixed(0)} µm along the axis`:"";
+    return [`Guided ray · acceptance margin: ${f(r.margin,3)}°`,
+      `The ray enters at θ = ${+p.theta.toFixed(2)}°, ${acc}. It refracts to ${f(r.tc,2)}° inside the core and meets the core–cladding wall at ${f(r.wall,2)}°, above the critical angle of ${f(r.crit,2)}°. It is therefore totally internally reflected ${r.bounces} time${r.bounces!==1?"s":""} in the ${SEG} µm segment${sp}.`];
+  }
+  return [`Outside acceptance · leaks into the cladding · over by ${f(-r.margin,3)}°`,
+    `The ray enters at θ = ${+p.theta.toFixed(2)}°, beyond θmax = ${f(r.tmax,2)}°. Inside the core it travels at ${f(r.tc,2)}° and meets the wall at ${f(r.wall,2)}°, below the critical angle of ${f(r.crit,2)}°. Total internal reflection fails: the light refracts into the cladding at ${f(r.clad,2)}° to the axis and is lost at the outer coating (cladding modes and partial reflection are not modelled).`];
+}
+
+/* ---------- state ---------- */
+let p={...DEF},res,scenario=null,playing=true,dragging=false;
+const $=id=>document.getElementById(id);
+const CUSTOM="Custom settings — choose a scenario or adjust your parameters.";
+(function readURL(){
+  const q=new URLSearchParams(location.search);
+  for(const k in DEF){const v=parseFloat(q.get(k));if(!isNaN(v))p[k]=clamp(v,...LIM[k])}
+  p.n2=Math.min(p.n2,+(p.n1-0.001).toFixed(3));
+})();
+
+/* ---------- controls ---------- */
+const sliders={},entries={};
+PAR.forEach(([k,label,unit,step,dec])=>{
+  const row=document.createElement("div");row.className="param";
+  row.innerHTML=`<label>${label}<span>${unit}</span></label><div class="prow"><input type="range" min="${LIM[k][0]}" max="${LIM[k][1]}" step="${step}"><input type="number" min="${LIM[k][0]}" max="${LIM[k][1]}" step="${step}"></div>`;
+  $("params").appendChild(row);
+  const [sl,en]=row.querySelectorAll("input");sliders[k]=sl;entries[k]=en;
+  sl.oninput=()=>setParam(k,parseFloat(sl.value));
+  en.onchange=()=>{const v=parseFloat(en.value);isNaN(v)?sync():setParam(k,v)};
+});
+const fmt=(k,v)=>String(+v.toFixed({theta:2,n1:3,n2:3,d:1}[k]));
+function sync(){for(const k in p){sliders[k].value=p[k];if(document.activeElement!==entries[k])entries[k].value=fmt(k,p[k])}}
+function setParam(k,val,keep){
+  const v=clamp(val,...LIM[k]);
+  if(k==="n1"){p.n1=v;if(p.n2>v-0.001)p.n2=+(v-0.001).toFixed(3)}
+  else if(k==="n2")p.n2=Math.min(v,+(p.n1-0.001).toFixed(3));
+  else p[k]=v;
+  if(!keep)setScenario(null);
+  sync();refresh();
+}
+function setScenario(key,label){
+  scenario=key;
+  document.querySelectorAll("[data-sc]").forEach(b=>b.classList.toggle("on",b.dataset.sc===key));
+  $("scLabel").textContent=label||CUSTOM;
+}
+document.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{
+  const key=b.dataset.sc,cap=LIM.theta[1];let th,txt;
+  if(key==="axial"){th=0;txt="Scenario: axial launch — the ray travels along the fibre axis."}
+  else if(key==="near"){th=Math.floor(0.98*Math.min(res.tmax,cap)*10)/10;txt="Scenario: near acceptance — 98% of θmax, still guided but barely."}
+  else if(res.tmax<cap){th=Math.min(cap,Math.ceil((res.tmax+Math.max(2,0.1*res.tmax))*10)/10);txt="Scenario: outside acceptance — the ray is launched beyond θmax and leaks."}
+  else{th=cap;txt=`This fibre accepts every angle up to ${cap}°. Raise n₂ (or lower n₁) to shrink the acceptance cone.`}
+  setParam("theta",th,true);setScenario(key,txt);
+});
+$("q95").onclick=()=>{setParam("theta",Math.floor(0.95*Math.min(res.tmax,LIM.theta[1])*10)/10,true);setScenario(null,"Quick try: 95% of the acceptance half-angle.")};
+$("reset").onclick=()=>{p={...DEF};setScenario(null);sync();refresh()};
+$("play").onclick=()=>{playing=!playing;$("play").textContent=playing?"Pause animation":"Play animation"};
+function toast(m){const n=$("note");n.textContent=m;n.style.color="#0b7a66";setTimeout(()=>{n.textContent="Illustrative values · not a product specification";n.style.color=""},2800)}
+$("link").onclick=()=>{
+  const q=new URLSearchParams({theta:+p.theta.toFixed(2),n1:+p.n1.toFixed(3),n2:+p.n2.toFixed(3),d:+p.d.toFixed(1)});
+  const url=location.origin+location.pathname+"?"+q;
+  (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast("Link copied to the clipboard"),()=>prompt("Copy this link:",url));
+};
+$("pdf").onclick=()=>window.print();
+
+/* ---------- canvas ---------- */
+const cv=$("cv"),ctx=cv.getContext("2d");
+let W=0,H=0,L={},path=[],cum=[0],total=0,src=[0,0],S=0,last=performance.now();
+const RAY={in:"#ffb347",core:"#ffb347",up:"#ff6b4a",down:"#ff6b4a"};
+function resize(){
+  const r=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  layout();buildPath();
+}
+function layout(){
+  L.X0=Math.max(150,W*0.2);L.X1=W-26;L.xs=(L.X1-L.X0)/SEG;L.hc=H*0.25;L.ys=L.hc/p.d;L.Y0=H*0.53;L.R=Math.min(H*0.3,L.X0-30);
+}
+const P=(x,y)=>[L.X0+x*L.xs,L.Y0-y*L.ys];
+function buildPath(){
+  layout();
+  const th=p.theta*D2R;
+  src=[L.X0-L.R*Math.cos(th),L.Y0-L.R*Math.sin(th)];
+  path=[[src[0],src[1],L.X0,L.Y0,"in"]];
+  res.segs.forEach(([x0,y0,x1,y1,g])=>{const a=P(x0,y0),b=P(x1,y1);path.push([a[0],a[1],b[0],b[1],g])});
+  cum=[0];path.forEach(s=>cum.push(cum[cum.length-1]+Math.hypot(s[2]-s[0],s[3]-s[1])));
+  total=cum[cum.length-1];
+}
+function mix(c1,c2,t){
+  const a=[1,3,5].map(i=>parseInt(c1.substr(i,2),16)),b=[1,3,5].map(i=>parseInt(c2.substr(i,2),16));
+  return "rgb("+a.map((v,i)=>Math.round(v*t+b[i]*(1-t))).join(",")+")";
+}
+function rr(x0,y0,x1,y1,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x0,y0,x1-x0,y1-y0,r):ctx.rect(x0,y0,x1-x0,y1-y0)}
+function line(x0,y0,x1,y1,col,w,cap){ctx.strokeStyle=col;ctx.lineWidth=w;ctx.lineCap=cap||"round";ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke()}
+function txt(s,x,y,col,font,al){ctx.fillStyle=col;ctx.font=font;ctx.textAlign=al||"left";ctx.textBaseline="middle";ctx.fillText(s,x,y)}
+function dot(x,y,r,fill,stroke,lw){ctx.beginPath();ctx.arc(x,y,r,0,7);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw||1;ctx.stroke()}}
+
+function draw(){
+  if(W<120||H<120)return;
+  const {X0,X1,Y0}=L,r=res;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle="#0e2639";ctx.lineWidth=1;
+  for(let x=0;x<W;x+=44){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke()}
+  for(let y=0;y<H;y+=44){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke()}
+  const a=L.hc/2,clad=a+CR*L.hc,top=Y0-clad,bot=Y0+clad;
+  txt(`θmax = ${r.tmax.toFixed(2)}° · θ = ${+p.theta.toFixed(2)}°`,(X0+X1)/2,Math.max(top-30,18),"#eef6f9","bold 14px system-ui","center");
+  // acceptance cone
+  const psi=Math.min(r.tmax,80)*D2R,rc=L.R*0.9,cx=X0-rc*Math.cos(psi),cy=rc*Math.sin(psi);
+  ctx.beginPath();ctx.moveTo(X0,Y0);ctx.lineTo(cx,Y0-cy);ctx.lineTo(cx,Y0+cy);ctx.closePath();
+  ctx.fillStyle="#0e3a40";ctx.fill();ctx.strokeStyle="#1f8f86";ctx.lineWidth=1;ctx.stroke();
+  txt("acceptance cone",cx+4,Y0+cy+12,"#5f8c93","11px system-ui");
+  // fibre
+  rr(X0,top,X1,bot,18);ctx.fillStyle="#243f4d";ctx.fill();ctx.strokeStyle="#4b6b79";ctx.lineWidth=1;ctx.stroke();
+  ctx.fillStyle="#0e4443";ctx.fillRect(X0,Y0-a,X1-X0,2*a);ctx.strokeStyle="#14b8a0";ctx.lineWidth=1.5;ctx.strokeRect(X0,Y0-a,X1-X0,2*a);
+  ctx.setLineDash([5,5]);line(18,Y0,W-18,Y0,"#2b6670",1,"butt");ctx.setLineDash([]);
+  txt(`Cladding · n₂ = ${p.n2.toFixed(3)}`,X0+18,top+18,"#c4d6de","13px system-ui");
+  txt(`Core · n₁ = ${p.n1.toFixed(3)} · Ø ${+p.d.toFixed(1)} µm`,X1-12,Y0-a+14,"#7fe3d2","13px system-ui","right");
+  txt("Air · n₀ = 1",22,top+18,"#8fb4c4","13px system-ui");
+  const dy=bot+22;line(X0,dy,X1,dy,"#5f8190",1,"butt");line(X0,dy-4,X0,dy+4,"#5f8190",1,"butt");line(X1,dy-4,X1,dy+4,"#5f8190",1,"butt");
+  txt(`${SEG} µm`,(X0+X1)/2,dy+14,"#97b3c0","13px system-ui","center");
+  // rays
+  path.forEach(s=>line(s[0],s[1],s[2],s[3],mix(RAY[s[4]],"#08192a",0.28),9));
+  path.forEach(s=>line(s[0],s[1],s[2],s[3],RAY[s[4]],2.5));
+  dot(X0,Y0,4,"#ffd36e");
+  r.events.forEach(([x,y,k])=>{
+    const [px,py]=P(x,y);
+    if(k==="tir_core")dot(px,py,3.5,"#ffc15e","#fff0c8");
+    else if(k==="refract")dot(px,py,5,null,"#ff8a6e",2);
+    else if(k==="absorbed"){line(px-5,py-5,px+5,py+5,"#ff6b4a",2);line(px-5,py+5,px+5,py-5,"#ff6b4a",2)}
+  });
+  if(r.absorbed){const [px,py]=P(...r.absorbed);txt("absorbed by coating",px+10,py+(py>Y0?14:-14),"#ff9c8a","12px system-ui")}
+  // pulse
+  if(total>0){
+    const s=S%(total+90),head=Math.min(s,total),tail=Math.max(s-80,0);
+    if(tail<total){
+      for(const [w,col] of [[6,"#ffe3a8"],[2.5,"#ffffff"]]){
+        for(let i=0;i<path.length;i++){
+          const s0=cum[i],s1=cum[i+1];if(s1<tail||s0>head||s1===s0)continue;
+          const lo=Math.max(tail,s0),hi=Math.min(head,s1),g=path[i];
+          const t0=(lo-s0)/(s1-s0),t1=(hi-s0)/(s1-s0);
+          line(g[0]+(g[2]-g[0])*t0,g[1]+(g[3]-g[1])*t0,g[0]+(g[2]-g[0])*t1,g[1]+(g[3]-g[1])*t1,col,w);
+        }
+      }
+    }
+  }
+  // source
+  const [sx,sy]=src;
+  [[24,.10],[18,.18],[13,.32]].forEach(([rad,t])=>dot(sx,sy,rad,mix("#ffb347","#08192a",t)));
+  dot(sx,sy,6,"#fff0c8","#ffb347",2);
+  const foc=document.activeElement===cv;
+  ctx.setLineDash(foc?[]:[3,3]);dot(sx,sy,30,null,foc?"#14b8a0":"#cdb97e",foc?2:1);ctx.setLineDash([]);
+}
+function frame(now){
+  const dt=Math.min((now-last)/1000,0.05);last=now;
+  if(playing&&total>0)S+=240*dt;
+  draw();requestAnimationFrame(frame);
+}
+
+/* ---------- text / refresh ---------- */
+function refresh(){
+  res=analyse(p);const r=res,[head,detail]=describe(p,r);
+  const chip=$("chip");chip.textContent=r.accepted?"Guided ray":"Leaky ray";chip.className="chip "+(r.accepted?"ok":"bad");
+  $("head").textContent=head;
+  $("vNA").textContent=r.na.toFixed(3);$("vTmax").textContent=r.tmax.toFixed(3)+"°";
+  $("vTc").textContent=r.tc.toFixed(3)+"°";$("vCrit").textContent=r.crit.toFixed(3)+"°";
+  $("vWall").textContent=r.wall.toFixed(3)+"°";$("vWall").style.color=r.wall>=r.crit?"":"#ff9c8a";
+  if(r.accepted){$("vRefl").textContent=r.bounces;$("sRefl").textContent=r.period?`every ${r.period.toFixed(0)} µm along the axis`:"axial ray — never touches the wall"}
+  else{$("vRefl").textContent="leaks";$("sRefl").textContent="refracts into the cladding at the first wall hit"}
+  $("obsMain").textContent=`θ = ${+p.theta.toFixed(2)}° · θmax = ${r.tmax.toFixed(2)}° · margin = ${r.margin.toFixed(3)}°`;
+  $("obsDetail").textContent=detail;
+  buildPath();
+}
+
+/* ---------- interaction ---------- */
+const pos=e=>{const b=cv.getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top]};
+const nearSrc=(x,y)=>Math.hypot(x-src[0],y-src[1])<=30;
+cv.addEventListener("pointerdown",e=>{cv.focus();const [x,y]=pos(e);dragging=nearSrc(x,y);if(dragging){cv.setPointerCapture(e.pointerId);drag(e)}});
+cv.addEventListener("pointermove",e=>{const [x,y]=pos(e);if(dragging)drag(e);else cv.style.cursor=nearSrc(x,y)?"grab":"default"});
+cv.addEventListener("pointerup",()=>dragging=false);
+function drag(e){
+  const [x,y]=pos(e),dx=L.X0-x,dy=L.Y0-y;
+  let th=dy<=0?0:(dx<=0?LIM.theta[1]:Math.atan2(dy,dx)*R2D);
+  th=+clamp(th,0,LIM.theta[1]).toFixed(1);
+  if(Math.abs(th-p.theta)>1e-9)setParam("theta",th);
+}
+cv.addEventListener("keydown",e=>{
+  const m={ArrowUp:1,ArrowDown:-1}[e.key];if(!m)return;
+  e.preventDefault();setParam("theta",+(p.theta+m*(e.shiftKey?1:0.1)).toFixed(2));
+});
+
+new ResizeObserver(resize).observe(cv);
+setScenario(null);sync();res=analyse(p);refresh();resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
